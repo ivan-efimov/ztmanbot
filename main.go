@@ -30,7 +30,7 @@ func main() {
 
 	var botConfig BotConfig
 
-	if *configFile != "" {
+	if len(*configFile) > 0 {
 		cfg, err := os.Open(*configFile)
 		if err != nil {
 			log.Fatalf("Bad config file: %s\n", err.Error())
@@ -41,6 +41,15 @@ func main() {
 		if err != nil {
 			log.Fatalln(err)
 		}
+	} else {
+		log.Println("No config file given. Create config file such as following one (fill ALL empty strings):")
+		sampleConfig := &BotConfig{}
+		enc := yaml.NewEncoder(log.Writer())
+		err := enc.Encode(sampleConfig)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		os.Exit(1)
 	}
 
 	ztApi := NewZTApi(botConfig.ZeroTierToken)
