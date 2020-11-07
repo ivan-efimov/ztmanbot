@@ -1,4 +1,4 @@
-SOURCES=main.go
+SOURCES=main.go zerotierapi.go
 
 get_deps:
 	go get -u github.com/go-telegram-bot-api/telegram-bot-api

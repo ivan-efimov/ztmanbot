@@ -2,12 +2,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"gopkg.in/yaml.v2"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 )
 
 type BotConfig struct {
@@ -17,6 +19,8 @@ type BotConfig struct {
 	WebHookKeyFile  string `yaml:"web_hook_key"`
 	ListenAddr      string `yaml:"listen_addr"`
 	ListenPort      string `yaml:"port"`
+	ZeroTierToken   string `yaml:"zt_token"`
+	ZeroTierNetwork string `yaml:"zt_network"`
 }
 
 func main() {
@@ -31,13 +35,15 @@ func main() {
 		if err != nil {
 			log.Fatalf("Bad config file: %s\n", err.Error())
 		}
-		defer cfg.Close()
 		dec := yaml.NewDecoder(cfg)
 		err = dec.Decode(&botConfig)
+		_ = cfg.Close()
 		if err != nil {
 			log.Fatalln(err)
 		}
 	}
+
+	ztApi := NewZTApi(botConfig.ZeroTierToken)
 
 	whURL, err := url.Parse(botConfig.WebHookUrl)
 	if err != nil {
@@ -67,7 +73,25 @@ func main() {
 	go http.ListenAndServeTLS(botConfig.ListenAddr+":"+botConfig.ListenPort,
 		botConfig.WebHookCertFile, botConfig.WebHookKeyFile, nil)
 
+	addMemberRE := regexp.MustCompile("^[0-9a-f]{10}$")
+
 	for update := range updates {
-		log.Printf("%+v\n", update)
+		if addMemberRE.MatchString(update.Message.Text) {
+			ok, err := ztApi.AddMember(botConfig.ZeroTierNetwork, update.Message.Text)
+			if err != nil {
+				log.Println(err)
+			}
+
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID,
+				fmt.Sprintf("Success: %t.\nNow you can join network %s.", ok, botConfig.ZeroTierNetwork))
+			msg.ReplyToMessageID = update.Message.MessageID
+
+			_, _ = bot.Send(msg)
+		} else {
+			msg := tgbotapi.NewMessage(update.Message.Chat.ID,
+				"Invalid input. Send node id (10 hexadecimal digits).")
+			msg.ReplyToMessageID = update.Message.MessageID
+			_, _ = bot.Send(msg)
+		}
 	}
 }
