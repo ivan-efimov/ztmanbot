@@ -2,12 +2,14 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"gopkg.in/yaml.v2"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 )
 
 type BotConfig struct {
@@ -19,6 +21,51 @@ type BotConfig struct {
 	ListenPort      string `yaml:"port"`
 	ZeroTierToken   string `yaml:"zt_token"`
 	ZeroTierNetwork string `yaml:"zt_network"`
+}
+
+type WebhookConfigCustom struct {
+	URL                *url.URL
+	Certificate        interface{}
+	MaxConnections     int
+	DropPendingUpdates bool
+	AllowedUpdates     []string
+}
+
+func SetWebhookCustom(bot *tgbotapi.BotAPI, config *WebhookConfigCustom) (tgbotapi.APIResponse, error) {
+	if config.Certificate == nil {
+		v := url.Values{}
+		v.Add("url", config.URL.String())
+		if config.DropPendingUpdates {
+			v.Add("drop_pending_updates", "True")
+		}
+		if len(config.AllowedUpdates) > 0 {
+			v.Add("allowed_updates", fmt.Sprint(config.AllowedUpdates))
+		}
+		if config.MaxConnections != 0 {
+			v.Add("max_connections", strconv.Itoa(config.MaxConnections))
+		}
+
+		return bot.MakeRequest("setWebhook", v)
+	}
+
+	params := make(map[string]string)
+	params["url"] = config.URL.String()
+	if config.MaxConnections != 0 {
+		params["max_connections"] = strconv.Itoa(config.MaxConnections)
+	}
+	if config.DropPendingUpdates {
+		params["drop_pending_updates"] = "True"
+	}
+	if len(config.AllowedUpdates) > 0 {
+		params["allowed_updates"] = fmt.Sprint(config.AllowedUpdates)
+	}
+
+	resp, err := bot.UploadFile("setWebhook", params, "certificate", config.Certificate)
+	if err != nil {
+		return tgbotapi.APIResponse{}, err
+	}
+
+	return resp, nil
 }
 
 func main() {
@@ -69,7 +116,12 @@ func main() {
 		log.Println("Bot is running in DEBUG mode")
 	}
 
-	resp, err := bot.SetWebhook(tgbotapi.WebhookConfig{URL: whURL, Certificate: botConfig.WebHookCertFile})
+	resp, err := SetWebhookCustom(bot, &WebhookConfigCustom{
+		URL:                whURL,
+		Certificate:        botConfig.WebHookCertFile,
+		DropPendingUpdates: true,
+		AllowedUpdates:     []string{"message"},
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
