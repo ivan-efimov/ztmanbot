@@ -2,14 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 	"gopkg.in/yaml.v2"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
 )
 
 type BotConfig struct {
@@ -52,7 +50,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	ztApi := NewZTApi(botConfig.ZeroTierToken)
+	ztApi := NewZTApi(botConfig.ZeroTierToken, botConfig.ZeroTierNetwork)
+
+	commandManager := NewCommandManager(ztApi)
 
 	whURL, err := url.Parse(botConfig.WebHookUrl)
 	if err != nil {
@@ -82,25 +82,32 @@ func main() {
 	go http.ListenAndServeTLS(botConfig.ListenAddr+":"+botConfig.ListenPort,
 		botConfig.WebHookCertFile, botConfig.WebHookKeyFile, nil)
 
-	addMemberRE := regexp.MustCompile("^[0-9a-f]{10}$")
-
 	for update := range updates {
-		if addMemberRE.MatchString(update.Message.Text) {
-			ok, err := ztApi.AddMember(botConfig.ZeroTierNetwork, update.Message.Text)
+		if update.Message == nil { // ignore all non-message updates
+			continue
+		}
+		if update.Message.Chat.IsPrivate() {
+			if *debugMode {
+				log.Println("command:", update.Message.Command())
+				log.Println("args:", update.Message.CommandArguments())
+			}
+			rep, err := commandManager.HandleMessage(update.Message)
+			if err == nil {
+				_, err = bot.Send(rep)
+			} else {
+				log.Println(err)
+				errMsg := tgbotapi.NewMessage(update.Message.Chat.ID, "Something went wrong!")
+				_, err = bot.Send(errMsg)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		} else {
+			errMsg := tgbotapi.NewMessage(update.Message.Chat.ID, "I only work with private chats")
+			_, err = bot.Send(errMsg)
 			if err != nil {
 				log.Println(err)
 			}
-
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-				fmt.Sprintf("Success: %t.\nNow you can join network %s.", ok, botConfig.ZeroTierNetwork))
-			msg.ReplyToMessageID = update.Message.MessageID
-
-			_, _ = bot.Send(msg)
-		} else {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-				"Invalid input. Send node id (10 hexadecimal digits).")
-			msg.ReplyToMessageID = update.Message.MessageID
-			_, _ = bot.Send(msg)
 		}
 	}
 }

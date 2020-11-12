@@ -1,4 +1,4 @@
-SOURCES=main.go zerotierapi.go
+SOURCES=main.go zerotierapi.go command.go
 
 get_deps:
 	go get gopkg.in/yaml.v2
