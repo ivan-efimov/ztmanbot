@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"regexp"
+	"strconv"
 )
 
 type BotConfig struct {
@@ -21,6 +21,51 @@ type BotConfig struct {
 	ListenPort      string `yaml:"port"`
 	ZeroTierToken   string `yaml:"zt_token"`
 	ZeroTierNetwork string `yaml:"zt_network"`
+}
+
+type WebhookConfigCustom struct {
+	URL                *url.URL
+	Certificate        interface{}
+	MaxConnections     int
+	DropPendingUpdates bool
+	AllowedUpdates     []string
+}
+
+func SetWebhookCustom(bot *tgbotapi.BotAPI, config *WebhookConfigCustom) (tgbotapi.APIResponse, error) {
+	if config.Certificate == nil {
+		v := url.Values{}
+		v.Add("url", config.URL.String())
+		if config.DropPendingUpdates {
+			v.Add("drop_pending_updates", "True")
+		}
+		if len(config.AllowedUpdates) > 0 {
+			v.Add("allowed_updates", fmt.Sprint(config.AllowedUpdates))
+		}
+		if config.MaxConnections != 0 {
+			v.Add("max_connections", strconv.Itoa(config.MaxConnections))
+		}
+
+		return bot.MakeRequest("setWebhook", v)
+	}
+
+	params := make(map[string]string)
+	params["url"] = config.URL.String()
+	if config.MaxConnections != 0 {
+		params["max_connections"] = strconv.Itoa(config.MaxConnections)
+	}
+	if config.DropPendingUpdates {
+		params["drop_pending_updates"] = "True"
+	}
+	if len(config.AllowedUpdates) > 0 {
+		params["allowed_updates"] = fmt.Sprint(config.AllowedUpdates)
+	}
+
+	resp, err := bot.UploadFile("setWebhook", params, "certificate", config.Certificate)
+	if err != nil {
+		return tgbotapi.APIResponse{}, err
+	}
+
+	return resp, nil
 }
 
 func main() {
@@ -52,7 +97,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	ztApi := NewZTApi(botConfig.ZeroTierToken)
+	ztApi := NewZTApi(botConfig.ZeroTierToken, botConfig.ZeroTierNetwork)
+
+	commandManager := NewCommandManager(ztApi)
 
 	whURL, err := url.Parse(botConfig.WebHookUrl)
 	if err != nil {
@@ -69,7 +116,12 @@ func main() {
 		log.Println("Bot is running in DEBUG mode")
 	}
 
-	resp, err := bot.SetWebhook(tgbotapi.WebhookConfig{URL: whURL, Certificate: botConfig.WebHookCertFile})
+	resp, err := SetWebhookCustom(bot, &WebhookConfigCustom{
+		URL:                whURL,
+		Certificate:        botConfig.WebHookCertFile,
+		DropPendingUpdates: true,
+		AllowedUpdates:     []string{"message"},
+	})
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -82,25 +134,32 @@ func main() {
 	go http.ListenAndServeTLS(botConfig.ListenAddr+":"+botConfig.ListenPort,
 		botConfig.WebHookCertFile, botConfig.WebHookKeyFile, nil)
 
-	addMemberRE := regexp.MustCompile("^[0-9a-f]{10}$")
-
 	for update := range updates {
-		if addMemberRE.MatchString(update.Message.Text) {
-			ok, err := ztApi.AddMember(botConfig.ZeroTierNetwork, update.Message.Text)
+		if update.Message == nil { // ignore all non-message updates
+			continue
+		}
+		if update.Message.Chat.IsPrivate() {
+			if *debugMode {
+				log.Println("command:", update.Message.Command())
+				log.Println("args:", update.Message.CommandArguments())
+			}
+			rep, err := commandManager.HandleMessage(update.Message)
+			if err == nil {
+				_, err = bot.Send(rep)
+			} else {
+				log.Println(err)
+				errMsg := tgbotapi.NewMessage(update.Message.Chat.ID, "Something went wrong!")
+				_, err = bot.Send(errMsg)
+				if err != nil {
+					log.Println(err)
+				}
+			}
+		} else {
+			errMsg := tgbotapi.NewMessage(update.Message.Chat.ID, "I only work with private chats")
+			_, err = bot.Send(errMsg)
 			if err != nil {
 				log.Println(err)
 			}
-
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-				fmt.Sprintf("Success: %t.\nNow you can join network %s.", ok, botConfig.ZeroTierNetwork))
-			msg.ReplyToMessageID = update.Message.MessageID
-
-			_, _ = bot.Send(msg)
-		} else {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID,
-				"Invalid input. Send node id (10 hexadecimal digits).")
-			msg.ReplyToMessageID = update.Message.MessageID
-			_, _ = bot.Send(msg)
 		}
 	}
 }
