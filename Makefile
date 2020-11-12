@@ -7,4 +7,7 @@ get_deps:
 build:
 	go build -o zmanbot $(SOURCES)
 
+fmt:
+	gofmt -w $(SOURCES)
+
 all: get_deps build
