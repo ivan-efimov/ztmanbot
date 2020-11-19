@@ -9,19 +9,21 @@ import (
 )
 
 type CommandHandler interface {
-	Handle(*tgbotapi.Message, *ZeroTierApi) (tgbotapi.MessageConfig, error)
+	Handle(*tgbotapi.Message, *ZeroTierApi, AccessManager) (tgbotapi.MessageConfig, error)
 	Description() string
 }
 
 type CommandManager struct {
 	registeredCommands map[string]CommandHandler
 	ztApi              *ZeroTierApi
+	accessManager      AccessManager
 }
 
-func NewCommandManager(ztApi *ZeroTierApi) *CommandManager {
+func NewCommandManager(ztApi *ZeroTierApi, accessManager AccessManager) *CommandManager {
 	cm := &CommandManager{
 		registeredCommands: make(map[string]CommandHandler),
 		ztApi:              ztApi,
+		accessManager:      accessManager,
 	}
 	cm.registeredCommands["start"] = StartHandler{}
 	cm.registeredCommands["auth"] = AuthHandler{}
@@ -35,26 +37,39 @@ func (cm *CommandManager) HandleMessage(msg *tgbotapi.Message) (tgbotapi.Message
 	if len(msg.Command()) == 0 {
 		return tgbotapi.NewMessage(msg.Chat.ID, "I understand commands only. Try /help."), nil
 	}
+	if cm.accessManager.GetAccessLevel(msg.Chat.ID) <= AccessLevelGuest {
+		return tgbotapi.NewMessage(msg.Chat.ID, cm.AccessDeniedText()), nil
+	}
 	// help needs to be handled in special way
 	if msg.Command() == "help" {
-		s := "Help:\nThis bot is used to manage a ZeroTier network via ZeroTier-Central API.\n"
-		s += "Available commands:\n" + "/help : provides help.\n"
-		for k, v := range cm.registeredCommands {
-			s += "/" + k + " : " + v.Description() + "\n"
-		}
-		return tgbotapi.NewMessage(msg.Chat.ID, s), nil
+		return tgbotapi.NewMessage(msg.Chat.ID, cm.HelpText()), nil
 	}
 	handler, found := cm.registeredCommands[msg.Command()]
 	if !found {
 		return tgbotapi.NewMessage(msg.Chat.ID, "Unknown command. Try /help."), nil
 	}
-	return handler.Handle(msg, cm.ztApi)
+	return handler.Handle(msg, cm.ztApi, cm.accessManager)
+}
+
+func (cm *CommandManager) HelpText() string {
+	txt := "Help:\n" +
+		"This bot is used to manage a ZeroTier network via ZeroTier-Central API.\n" +
+		"Available commands:\n" +
+		"/help : provides help.\n"
+	for k, v := range cm.registeredCommands {
+		txt += "/" + k + " : " + v.Description() + "\n"
+	}
+	return txt
+}
+
+func (cm *CommandManager) AccessDeniedText() string {
+	return "Access denied. If you think that's a mistake, contact you administrator."
 }
 
 /* /start handler */
 type StartHandler struct{}
 
-func (StartHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi) (tgbotapi.MessageConfig, error) {
+func (StartHandler) Handle(msg *tgbotapi.Message, _ *ZeroTierApi, _ AccessManager) (tgbotapi.MessageConfig, error) {
 	return tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("Hello, %d!", msg.Chat.ID)), nil
 }
 
@@ -65,7 +80,7 @@ func (StartHandler) Description() string {
 /* /auth handler */
 type AuthHandler struct{}
 
-func (AuthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi) (tgbotapi.MessageConfig, error) {
+func (AuthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, _ AccessManager) (tgbotapi.MessageConfig, error) {
 	args := splitArgs(msg.CommandArguments())
 	if len(args) == 0 {
 		return tgbotapi.NewMessage(msg.Chat.ID, "No arguments given. Try /help."), nil
@@ -103,7 +118,7 @@ func (AuthHandler) Description() string {
 /* /unauth handler */
 type UnauthHandler struct{}
 
-func (UnauthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi) (tgbotapi.MessageConfig, error) {
+func (UnauthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, _ AccessManager) (tgbotapi.MessageConfig, error) {
 	args := splitArgs(msg.CommandArguments())
 	if len(args) == 0 {
 		return tgbotapi.NewMessage(msg.Chat.ID, "No arguments given. Try /help."), nil
@@ -134,7 +149,7 @@ func (UnauthHandler) Description() string {
 /* /list handler */
 type ListMembersHandler struct{}
 
-func (ListMembersHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi) (tgbotapi.MessageConfig, error) {
+func (ListMembersHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, _ AccessManager) (tgbotapi.MessageConfig, error) {
 	args := splitArgs(msg.CommandArguments())
 	if len(args) > 1 {
 		return tgbotapi.NewMessage(msg.Chat.ID, "Too many arguments given. Try /help."), nil

@@ -97,9 +97,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	var accessManager AccessManager
+
 	ztApi := NewZTApi(botConfig.ZeroTierToken, botConfig.ZeroTierNetwork)
 
-	commandManager := NewCommandManager(ztApi)
+	commandManager := NewCommandManager(ztApi, accessManager)
 
 	whURL, err := url.Parse(botConfig.WebHookUrl)
 	if err != nil {
