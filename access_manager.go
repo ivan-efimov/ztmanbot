@@ -1,6 +1,10 @@
 package main
 
-import "errors"
+import (
+	"encoding/json"
+	"errors"
+	"io/ioutil"
+)
 
 // These constants determines access levels
 // You can compare it numerically as levels with more rights are always numerically higher
@@ -14,6 +18,10 @@ const (
 	AccessLevelAdmin // Must be highest
 )
 
+func ValidLevelToSet(level int) bool {
+	return AccessLevelBanned <= level && level < AccessLevelAdmin
+}
+
 var InvalidAccessLevelError = errors.New("invalid access level value")
 var AdminMutationError = errors.New("admin's access level is immutable")
 
@@ -26,16 +34,67 @@ type AccessManager interface {
 	SetAccessLevel(id int64, accessLevel int) error
 }
 
-type MockAccessManager struct {
+type AccessManagerWithFileStorage struct {
+	adminId   int64
+	accessMap map[int64]int
+	filepath  string
 }
 
-func (am MockAccessManager) GetAccessLevel(id int64) int {
-	return AccessLevelGuest
+// Returns nil if an error occurred
+func NewAccessManagerWithFileStorage(adminId int64, filepath string) (*AccessManagerWithFileStorage, error) {
+	fileData, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return nil, err
+	}
+	m := make(map[int64]int, 0)
+	err = json.Unmarshal(fileData, &m)
+	if err != nil {
+		return nil, err
+	}
+	for _, level := range m {
+		if !ValidLevelToSet(level) {
+			return nil, errors.New("file corrupted")
+		}
+	}
+	delete(m, adminId)
+	return &AccessManagerWithFileStorage{
+		adminId:   adminId,
+		accessMap: m,
+		filepath:  filepath,
+	}, nil
 }
 
-func (am MockAccessManager) SetAccessLevel(id int64, accessLevel int) error {
-	if AccessLevelBanned <= accessLevel && accessLevel <= AccessLevelAdmin {
+func (a AccessManagerWithFileStorage) GetAccessLevel(id int64) int {
+	if id == a.adminId {
+		return AccessLevelAdmin
+	}
+	level, found := a.accessMap[id]
+	if !found {
+		return AccessLevelGuest
+	}
+	return level
+}
+
+func (a AccessManagerWithFileStorage) SetAccessLevel(id int64, accessLevel int) error {
+	if id == a.adminId {
 		return AdminMutationError
 	}
-	return InvalidAccessLevelError
+	if accessLevel < AccessLevelBanned || accessLevel >= AccessLevelAdmin {
+		return InvalidAccessLevelError
+	}
+	// AccessLevelGuest is default value
+	if accessLevel == AccessLevelGuest {
+		delete(a.accessMap, id)
+	} else {
+		a.accessMap[id] = accessLevel
+	}
+	return a.commit()
+}
+
+func (a AccessManagerWithFileStorage) commit() error {
+	fileData, err := json.Marshal(a.accessMap)
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(a.filepath, fileData, 664)
 }
