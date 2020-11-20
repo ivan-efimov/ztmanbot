@@ -1,4 +1,5 @@
-SOURCES=main.go zerotierapi.go command.go
+COM_HANDLERS=handlers_basic.go handlers_auth.go handlers_list.go handlers_op.go
+SOURCES=main.go zerotierapi.go command.go access_manager.go $(COM_HANDLERS)
 
 get_deps:
 	go get gopkg.in/yaml.v2

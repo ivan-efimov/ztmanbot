@@ -21,6 +21,8 @@ type BotConfig struct {
 	ListenPort      string `yaml:"port"`
 	ZeroTierToken   string `yaml:"zt_token"`
 	ZeroTierNetwork string `yaml:"zt_network"`
+	AdminId         int64  `yaml:"admin_id"`
+	OpsStorage      string `yaml:"ops_file"`
 }
 
 type WebhookConfigCustom struct {
@@ -97,9 +99,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	accessManager, err := NewAccessManagerWithFileStorage(botConfig.AdminId, botConfig.OpsStorage)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
 	ztApi := NewZTApi(botConfig.ZeroTierToken, botConfig.ZeroTierNetwork)
 
-	commandManager := NewCommandManager(ztApi)
+	commandManager := NewCommandManager(ztApi, accessManager)
 
 	whURL, err := url.Parse(botConfig.WebHookUrl)
 	if err != nil {
