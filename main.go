@@ -4,26 +4,11 @@ import (
 	"flag"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-	"gopkg.in/yaml.v2"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 )
-
-type BotConfig struct {
-	Token           string `yaml:"token"`
-	WebHookUrl      string `yaml:"web_hook_url"`
-	WebHookCertFile string `yaml:"web_hook_cert"`
-	WebHookKeyFile  string `yaml:"web_hook_key"`
-	ListenAddr      string `yaml:"listen_addr"`
-	ListenPort      string `yaml:"port"`
-	ZeroTierToken   string `yaml:"zt_token"`
-	ZeroTierNetwork string `yaml:"zt_network"`
-	AdminId         int64  `yaml:"admin_id"`
-	OpsStorage      string `yaml:"ops_file"`
-}
 
 type WebhookConfigCustom struct {
 	URL                *url.URL
@@ -75,28 +60,9 @@ func main() {
 	debugMode := flag.Bool("debug", false, "run bot in debug mode")
 	flag.Parse()
 
-	var botConfig BotConfig
-
-	if len(*configFile) > 0 {
-		cfg, err := os.Open(*configFile)
-		if err != nil {
-			log.Fatalf("Bad config file: %s\n", err.Error())
-		}
-		dec := yaml.NewDecoder(cfg)
-		err = dec.Decode(&botConfig)
-		_ = cfg.Close()
-		if err != nil {
-			log.Fatalln(err)
-		}
-	} else {
-		log.Println("No config file given. Create config file such as following one (fill ALL empty strings):")
-		sampleConfig := &BotConfig{}
-		enc := yaml.NewEncoder(log.Writer())
-		err := enc.Encode(sampleConfig)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		os.Exit(1)
+	botConfig, err := LoadConfig(*configFile)
+	if err != nil {
+		log.Fatalf("Error loading config: %s", err.Error())
 	}
 
 	accessManager, err := NewAccessManagerWithFileStorage(botConfig.AdminId, botConfig.OpsStorage)
