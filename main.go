@@ -97,7 +97,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	var accessManager AccessManager
+	var accessManager MockAccessManager
 
 	ztApi := NewZTApi(botConfig.ZeroTierToken, botConfig.ZeroTierNetwork)
 
