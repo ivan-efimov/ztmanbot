@@ -35,7 +35,7 @@ func (AuthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, accessManag
 		return tgbotapi.MessageConfig{}, err
 	}
 	if success {
-		return tgbotapi.NewMessage(msg.Chat.ID, "Success."), nil
+		return tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("Success. %s can now join %s", nodeId, ztApi.defaultNetwork)), nil
 	}
 	return tgbotapi.NewMessage(msg.Chat.ID,
 		fmt.Sprintf("Failed to authorize %s in %s!", ztApi.defaultNetwork, args[0])), nil
