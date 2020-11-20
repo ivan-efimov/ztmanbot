@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"os"
 )
 
 // These constants determines access levels
@@ -40,23 +41,26 @@ type AccessManagerWithFileStorage struct {
 	filepath  string
 }
 
-// Returns nil if an error occurred
 func NewAccessManagerWithFileStorage(adminId int64, filepath string) (*AccessManagerWithFileStorage, error) {
-	fileData, err := ioutil.ReadFile(filepath)
-	if err != nil {
-		return nil, err
-	}
 	m := make(map[int64]int, 0)
-	err = json.Unmarshal(fileData, &m)
-	if err != nil {
-		return nil, err
-	}
-	for _, level := range m {
-		if !ValidLevelToSet(level) {
-			return nil, errors.New("file corrupted")
+
+	if _, err := os.Stat(filepath); os.IsExist(err) {
+		fileData, err := ioutil.ReadFile(filepath)
+		if err != nil {
+			return nil, err
 		}
+		err = json.Unmarshal(fileData, &m)
+		if err != nil {
+			return nil, err
+		}
+		for _, level := range m {
+			if !ValidLevelToSet(level) {
+				return nil, errors.New("file corrupted")
+			}
+		}
+		delete(m, adminId)
 	}
-	delete(m, adminId)
+
 	return &AccessManagerWithFileStorage{
 		adminId:   adminId,
 		accessMap: m,
@@ -96,5 +100,5 @@ func (a AccessManagerWithFileStorage) commit() error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(a.filepath, fileData, 664)
+	return ioutil.WriteFile(a.filepath, fileData, 644)
 }

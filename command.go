@@ -42,11 +42,14 @@ func (cm *CommandManager) HandleMessage(msg *tgbotapi.Message) (tgbotapi.Message
 	if len(msg.Command()) == 0 {
 		return tgbotapi.NewMessage(msg.Chat.ID, "I understand commands only. Try /help."), nil
 	}
-	if cm.accessManager.GetAccessLevel(msg.Chat.ID) <= AccessLevelGuest {
+	if cm.accessManager.GetAccessLevel(msg.Chat.ID) < AccessLevelGuest {
 		return tgbotapi.NewMessage(msg.Chat.ID, AccessDeniedText), nil
 	}
 	// help needs to be handled in special way
 	if msg.Command() == "help" {
+		if cm.accessManager.GetAccessLevel(msg.Chat.ID) < AccessLevelOperator {
+			return tgbotapi.NewMessage(msg.Chat.ID, AccessDeniedText), nil
+		}
 		return tgbotapi.NewMessage(msg.Chat.ID, cm.HelpText()), nil
 	}
 	handler, found := cm.registeredCommands[msg.Command()]

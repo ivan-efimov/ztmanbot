@@ -8,7 +8,10 @@ import (
 /* /auth handler */
 type AuthHandler struct{}
 
-func (AuthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, _ AccessManager) (tgbotapi.MessageConfig, error) {
+func (AuthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, accessManager AccessManager) (tgbotapi.MessageConfig, error) {
+	if accessManager.GetAccessLevel(msg.Chat.ID) < AccessLevelOperator {
+		return tgbotapi.NewMessage(msg.Chat.ID, AccessDeniedText), nil
+	}
 	args := splitArgs(msg.CommandArguments())
 	if len(args) == 0 {
 		return tgbotapi.NewMessage(msg.Chat.ID, "No arguments given. Try /help."), nil
@@ -46,7 +49,10 @@ func (AuthHandler) Description() string {
 /* /unauth handler */
 type UnauthHandler struct{}
 
-func (UnauthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, _ AccessManager) (tgbotapi.MessageConfig, error) {
+func (UnauthHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, accessManager AccessManager) (tgbotapi.MessageConfig, error) {
+	if accessManager.GetAccessLevel(msg.Chat.ID) < AccessLevelOperator {
+		return tgbotapi.NewMessage(msg.Chat.ID, AccessDeniedText), nil
+	}
 	args := splitArgs(msg.CommandArguments())
 	if len(args) == 0 {
 		return tgbotapi.NewMessage(msg.Chat.ID, "No arguments given. Try /help."), nil

@@ -10,7 +10,10 @@ import (
 /* /list handler */
 type ListMembersHandler struct{}
 
-func (ListMembersHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, _ AccessManager) (tgbotapi.MessageConfig, error) {
+func (ListMembersHandler) Handle(msg *tgbotapi.Message, ztApi *ZeroTierApi, accessManager AccessManager) (tgbotapi.MessageConfig, error) {
+	if accessManager.GetAccessLevel(msg.Chat.ID) < AccessLevelOperator {
+		return tgbotapi.NewMessage(msg.Chat.ID, AccessDeniedText), nil
+	}
 	args := splitArgs(msg.CommandArguments())
 	if len(args) > 1 {
 		return tgbotapi.NewMessage(msg.Chat.ID, "Too many arguments given. Try /help."), nil
